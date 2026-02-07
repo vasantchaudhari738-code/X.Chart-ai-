@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Universal AI Chat</title>
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+body {
+    background: #0f172a;
+}
+.chat-bubble {
+    animation: fadeIn 0.2s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.btn {
+    transition: transform 0.1s ease-in-out;
+}
+.btn:active {
+    transform: scale(0.95);
+}
+</style>
+</head>
+
+<body class="text-white">
+
+<div class="flex h-screen">
+
+<!-- Sidebar -->
+<div class="w-64 bg-slate-900 border-r border-slate-700 p-4 hidden md:block">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">Chats</h2>
+        <button id="newChatBtn" 
+        class="btn border border-cyan-400 text-cyan-400 px-3 py-1 rounded-lg hover:bg-cyan-400 hover:text-black">
+        + New
+        </button>
+    </div>
+
+    <div id="chatList" class="space-y-2 overflow-y-auto h-[85vh]"></div>
+
+    <div class="mt-4">
+        <button id="openSettings"
+        class="btn w-full border border-purple-400 text-purple-400 px-3 py-2 rounded-lg hover:bg-purple-400 hover:text-black">
+        Settings
+        </button>
+    </div>
+</div>
+
+<!-- Mobile Sidebar Toggle -->
+<button id="mobileMenuBtn"
+class="md:hidden fixed top-4 left-4 btn border border-cyan-400 text-cyan-400 px-3 py-1 rounded-lg">
+☰
+</button>
+
+<!-- Mobile Sidebar -->
+<div id="mobileSidebar" class="fixed inset-0 bg-slate-900 z-50 hidden">
+    <div class="p-4">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold">Chats</h2>
+            <button id="closeMobile" class="text-red-400">✕</button>
+        </div>
+
+        <div id="mobileChatList" class="space-y-2 overflow-y-auto h-[80vh]"></div>
+
+        <div class="mt-4">
+            <button id="openSettingsMobile"
+            class="btn w-full border border-purple-400 text-purple-400 px-3 py-2 rounded-lg">
+            Settings
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Main Chat Area -->
+<div class="flex-1 flex flex-col">
+
+<header class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
+    <h1 class="text-xl font-bold">Universal AI Chat</h1>
+</header>
+
+<div id="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
+
+<div class="p-4 bg-slate-900 border-t border-slate-700">
+    <div class="flex gap-2">
+        <textarea id="userInput"
+        class="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2 resize-none focus:outline-none"
+        rows="1" placeholder="Type your message..."></textarea>
+
+        <button id="sendBtn"
+        class="btn border border-green-400 text-green-400 px-4 py-2 rounded-lg hover:bg-green-400 hover:text-black">
+        Send
+        </button>
+    </div>
+</div>
+
+</div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-60 hidden flex items-center justify-center">
+<div class="bg-slate-900 p-6 rounded-xl w-96 border border-slate-700">
+    <h2 class="text-lg font-bold mb-4">Settings</h2>
+
+    <label class="block mb-2">OpenRouter API Key</label>
+    <input id="apiKeyInput" type="password"
+    class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 mb-4" />
+
+    <label class="block mb-2">Model Name</label>
+    <input id="modelInput" type="text"
+    value="google/gemini-2.0-flash-lite-preview-02-05"
+    class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 mb-4" />
+
+    <div class="flex justify-end gap-2">
+        <button id="closeSettings"
+        class="btn border border-red-400 text-red-400 px-3 py-1 rounded-lg">
+        Cancel
+        </button>
+
+        <button id="saveSettings"
+        class="btn border border-cyan-400 text-cyan-400 px-3 py-1 rounded-lg">
+        Save
+        </button>
+    </div>
+</div>
+</div>
+
+<!-- ===================== SCRIPT (END OF BODY) ===================== -->
+<script>
+const chatContainer = document.getElementById("chatContainer");
+const chatList = document.getElementById("chatList");
+const mobileChatList = document.getElementById("mobileChatList");
+const userInput = document.getElementById("userInput");
+const sendBtn = document.getElementById("sendBtn");
+const newChatBtn = document.getElementById("newChatBtn");
+
+const settingsModal = document.getElementById("settingsModal");
+const openSettings = document.getElementById("openSettings");
+const openSettingsMobile = document.getElementById("openSettingsMobile");
+const closeSettings = document.getElementById("closeSettings");
+const saveSettings = document.getElementById("saveSettings");
+const apiKeyInput = document.getElementById("apiKeyInput");
+const modelInput = document.getElementById("modelInput");
+
+const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+const mobileSidebar = document.getElementById("mobileSidebar");
+const closeMobile = document.getElementById("closeMobile");
+
+let currentChatId = null;
+
+// Load settings
+apiKeyInput.value = localStorage.getItem("openrouter_api_key") || "";
+modelInput.value = localStorage.getItem("ai_model") || "google/gemini-2.0-flash-lite-preview-02-05";
+
+// Chat storage helpers
+function getChats() {
+    return JSON.parse(localStorage.getItem("chats") || "[]");
+}
+
+function saveChats(chats) {
+    localStorage.setItem("chats", JSON.stringify(chats));
+}
+
+// Create new chat
+function createNewChat() {
+    const chats = getChats();
+    const id = Date.now().toString();
+    const newChat = { id, title: "New Chat", messages: [] };
+    chats.unshift(newChat);
+    saveChats(chats);
+    currentChatId = id;
+    renderChatList();
+    loadChat(id);
+}
+
+newChatBtn.addEventListener("click", createNewChat);
+
+// Render chat list
+function renderChatList() {
+    const chats = getChats();
+    chatList.innerHTML = "";
+    mobileChatList.innerHTML = "";
+
+    chats.forEach(chat => {
+        const btn = document.createElement("button");
+        btn.textContent = chat.title;
+        btn.className = "w-full text-left px-3 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 btn";
+        btn.onclick = () => loadChat(chat.id);
+
+        chatList.appendChild(btn);
+        mobileChatList.appendChild(btn.cloneNode(true));
+    });
+}
+
+// Load chat
+function loadChat(id) {
+    const chats = getChats();
+    const chat = chats.find(c => c.id === id);
+    if (!chat) return;
+
+    currentChatId = id;
+    chatContainer.innerHTML = "";
+
+    chat.messages.forEach(m => {
+        addMessage(m.role, m.content, false);
+    });
+
+    mobileSidebar.classList.add("hidden");
+}
+
+// Add message to UI
+function addMessage(role, text, save = true) {
+    const div = document.createElement("div");
+    div.className = "chat-bubble max-w-[80%] p-3 rounded-xl " +
+        (role === "user" ? "bg-cyan-600 ml-auto" : "bg-slate-800");
+
+    div.textContent = text;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    if (save && currentChatId) {
+        const chats = getChats();
+        const chat = chats.find(c => c.id === currentChatId);
+        chat.messages.push({ role, content: text });
+
+        if (chat.messages.length === 1 && role === "user") {
+            chat.title = text.substring(0, 25);
+        }
+
+        saveChats(chats);
+        renderChatList();
+    }
+}
+
+// Send message
+sendBtn.addEventListener("click", async () => {
+    const text = userInput.value.trim();
+    if (!text) return;
+
+    if (!currentChatId) createNewChat();
+
+    addMessage("user", text);
+    userInput.value = "";
+
+    const apiKey = localStorage.getItem("openrouter_api_key");
+    const model = localStorage.getItem("ai_model");
+
+    if (!apiKey) {
+        addMessage("assistant", "Please set your OpenRouter API Key in Settings.");
+        return;
+    }
+
+    addMessage("assistant", "Thinking...");
+
+    try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    { role: "user", content: text }
+                ]
+            })
+        });
+
+        const data = await res.json();
+        const reply = data.choices[0].message.content;
+
+        // Remove "Thinking..."
+        chatContainer.lastChild.remove();
+
+        addMessage("assistant", reply);
+
+    } catch (err) {
+        chatContainer.lastChild.remove();
+        addMessage("assistant", "Error connecting to AI. Check your API Key.");
+    }
+});
+
+// Settings handlers
+openSettings.onclick = () => settingsModal.classList.remove("hidden");
+openSettingsMobile.onclick = () => settingsModal.classList.remove("hidden");
+closeSettings.onclick = () => settingsModal.classList.add("hidden");
+
+saveSettings.onclick = () => {
+    localStorage.setItem("openrouter_api_key", apiKeyInput.value);
+    localStorage.setItem("ai_model", modelInput.value);
+    settingsModal.classList.add("hidden");
+};
+
+// Mobile sidebar toggle
+mobileMenuBtn.onclick = () => mobileSidebar.classList.remove("hidden");
+closeMobile.onclick = () => mobileSidebar.classList.add("hidden");
+
+// Init
+renderChatList();
+</script>
+</body>
+                                          </html>
